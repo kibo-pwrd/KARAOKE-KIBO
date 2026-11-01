@@ -81,17 +81,18 @@
 
     <!-- HUD superior sin franjas oscuras -->
     <div class="absolute top-5 left-5 right-5 flex justify-between items-start pointer-events-none z-10">
-      <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 shadow-lg flex items-center gap-3">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-        <div>
+      <div class="bg-black/60 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shadow-lg flex items-center gap-3 max-w-[55%]">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping flex-shrink-0"></span>
+        <div class="truncate">
           <p class="text-[10px] uppercase tracking-widest text-emerald-400 font-bold leading-none">Cantando</p>
-          <p id="hud-singer" class="text-lg font-black text-white leading-tight">Esperando canciones...</p>
+          <p id="hud-singer" class="text-lg font-black text-white leading-tight truncate">Esperando canciones...</p>
+          <p id="hud-song-title" class="text-xs text-slate-300 truncate font-medium">--</p>
         </div>
       </div>
 
-      <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 shadow-lg text-right">
+      <div class="bg-black/60 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/10 shadow-lg text-right max-w-[40%]">
         <p class="text-[10px] uppercase tracking-widest text-amber-400 font-bold leading-none">Siguiente</p>
-        <p id="hud-next" class="text-sm font-extrabold text-slate-200 leading-tight">--</p>
+        <p id="hud-next" class="text-sm font-extrabold text-slate-200 leading-tight truncate">--</p>
         <p id="hud-room-code" class="text-[9px] font-mono text-slate-400 mt-0.5">SALA: ----</p>
       </div>
     </div>
@@ -115,7 +116,8 @@
 
         <div class="pt-6 border-t border-slate-800">
           <p class="text-slate-400 text-sm">Siguiente al micrófono:</p>
-          <p id="trans-next-singer" class="text-3xl font-black text-amber-400 mb-3">--</p>
+          <p id="trans-next-singer" class="text-2xl font-bold text-amber-400 mb-1">--</p>
+          <p id="trans-next-song" class="text-sm text-slate-300 mb-3 italic">--</p>
           <div id="countdown-timer" class="text-7xl font-black text-amber-500 animate-pulse">5</div>
         </div>
       </div>
@@ -160,7 +162,12 @@
       <div class="glass p-4 rounded-2xl border border-white/10 space-y-3">
         <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">Pide tu turno</h3>
         <input id="guest-name" type="text" placeholder="Tu nombre o apodo" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-400">
-        <input id="guest-song" type="text" placeholder="Pega el enlace o ID de YouTube copiado" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:outline-none focus:border-amber-400">
+        
+        <!-- Nombre de la canción (editable o autocompletado) -->
+        <input id="guest-song-title" type="text" placeholder="Nombre de la canción y artista" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-amber-200 focus:outline-none focus:border-amber-400">
+        
+        <!-- Enlace o ID con autodetección al pegar -->
+        <input id="guest-song-url" type="text" oninput="handleUrlInput(this.value)" placeholder="Pega el enlace de YouTube aquí" class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-300 font-mono focus:outline-none focus:border-amber-400">
         
         <div class="grid grid-cols-2 gap-2 pt-1">
           <button onclick="addSong()" class="py-3 bg-amber-500 hover:bg-amber-400 active:scale-98 text-black font-extrabold text-sm rounded-xl transition shadow-md shadow-amber-500/20">
@@ -180,7 +187,7 @@
           </h3>
           <span id="fav-count" class="text-[10px] text-slate-400 font-mono">0 temas</span>
         </div>
-        <div id="favorites-list" class="space-y-2 max-h-40 overflow-y-auto pr-1">
+        <div id="favorites-list" class="space-y-2 max-h-48 overflow-y-auto pr-1">
           <!-- Render dinámico local -->
         </div>
       </div>
@@ -280,417 +287,4 @@
 
       const djUrl = `${getCleanBaseUrl()}?room=${roomId}&role=dj`;
 
-      document.getElementById('view-create-room').classList.add('hidden');
-      document.getElementById('view-dj-setup').classList.remove('hidden');
-      document.getElementById('setup-room-code').innerText = roomId;
-
-      const qrBox = document.getElementById('dj-qrcode');
-      qrBox.innerHTML = '';
-      new QRCode(qrBox, { text: djUrl, width: 180, height: 180 });
-
-      roomRef.child('djConnected').on('value', snap => {
-        if (snap.val() === true) skipToMainScreen();
-      });
-    }
-
-    function skipToMainScreen() {
-      document.getElementById('view-dj-setup').classList.add('hidden');
-      document.getElementById('view-screen').classList.remove('hidden');
-      document.getElementById('hud-room-code').innerText = `SALA: ${roomId}`;
-      listenToRoomForScreen();
-    }
-
-    function startScreenMode() {
-      document.getElementById('view-screen').classList.remove('hidden');
-      document.getElementById('hud-room-code').innerText = `SALA: ${roomId}`;
-      listenToRoomForScreen();
-    }
-
-    function startMobileMode() {
-      document.getElementById('view-mobile').classList.remove('hidden');
-      document.getElementById('mobile-room-tag').innerText = `SALA: ${roomId}`;
-
-      // Recuperar nombre del invitado si ya lo guardó antes
-      const savedName = localStorage.getItem('karaoke_user_name');
-      if (savedName) {
-        document.getElementById('guest-name').value = savedName;
-      }
-
-      if (userRole === 'dj') {
-        document.getElementById('mobile-role-badge').innerText = "🎧 Mando DJ";
-        const djBox = document.getElementById('dj-controls-box');
-        djBox.classList.remove('hidden');
-        roomRef.child('djConnected').set(true);
-      } else {
-        document.getElementById('mobile-role-badge').innerText = "🎤 Control Invitado";
-      }
-
-      renderMyPlaylist();
-      listenToRoomForMobile();
-    }
-
-    function extractYouTubeId(url) {
-      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-      const match = url.match(regExp);
-      return (match && match[2].length === 11) ? match[2] : null;
-    }
-
-    function addSong(forcedVideoId = null) {
-      const nameInput = document.getElementById('guest-name');
-      const songInput = document.getElementById('guest-song');
-      
-      const singer = nameInput.value.trim();
-      const rawSong = forcedVideoId || songInput.value.trim();
-      
-      if (!singer || !rawSong) return alert("Escribe tu nombre y pega el enlace o ID de YouTube.");
-
-      // Guardar nombre localmente para futuras sesiones
-      localStorage.setItem('karaoke_user_name', singer);
-
-      const videoId = extractYouTubeId(rawSong) || rawSong;
-
-      roomRef.once('value', snapshot => {
-        const data = snapshot.val() || {};
-        if (!data.currentSong) {
-          roomRef.child('currentSong').set({
-            singer: singer,
-            videoId: videoId,
-            stars: 0,
-            tomatoes: 0
-          });
-        } else {
-          roomRef.child('queue').push({
-            singer: singer,
-            videoId: videoId,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      if (!forcedVideoId) {
-        songInput.value = '';
-      }
-    }
-
-    // ================= GESTIÓN DE REPERTORIO PERSONAL (LOCALSTORAGE) =================
-    function getStoredFavorites() {
-      try {
-        return JSON.parse(localStorage.getItem('karaoke_my_playlist')) || [];
-      } catch (e) {
-        return [];
-      }
-    }
-
-    function saveToMyPlaylist() {
-      const songInput = document.getElementById('guest-song').value.trim();
-      if (!songInput) return alert("Pega el enlace o ID del video que deseas guardar en tu repertorio.");
-
-      const videoId = extractYouTubeId(songInput) || songInput;
-      const list = getStoredFavorites();
-
-      if (list.some(item => item.videoId === videoId)) {
-        return alert("Este tema ya está guardado en tu repertorio.");
-      }
-
-      const songTitle = prompt("¿Qué nombre o título quieres ponerle a esta pista?", `Pista #${list.length + 1}`) || `Tema ${videoId}`;
-
-      list.push({ title: songTitle, videoId: videoId });
-      localStorage.setItem('karaoke_my_playlist', JSON.stringify(list));
-      
-      renderMyPlaylist();
-      document.getElementById('guest-song').value = '';
-    }
-
-    function removeFavorite(index) {
-      const list = getStoredFavorites();
-      list.splice(index, 1);
-      localStorage.setItem('karaoke_my_playlist', JSON.stringify(list));
-      renderMyPlaylist();
-    }
-
-    function requestFromFavorite(videoId) {
-      addSong(videoId);
-    }
-
-    function renderMyPlaylist() {
-      const list = getStoredFavorites();
-      const container = document.getElementById('favorites-list');
-      const countEl = document.getElementById('fav-count');
-      
-      countEl.innerText = `${list.length} temas`;
-      container.innerHTML = '';
-
-      if (list.length === 0) {
-        container.innerHTML = '<p class="text-[11px] text-slate-500 italic text-center py-2">No tienes temas guardados aún. Pega un link y pulsa "⭐ Guardar tema".</p>';
-        return;
-      }
-
-      list.forEach((item, index) => {
-        const row = document.createElement('div');
-        row.className = "flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800 text-xs";
-        row.innerHTML = `
-          <span class="font-semibold text-slate-200 truncate max-w-[170px]">${item.title}</span>
-          <div class="flex items-center gap-1.5">
-            <button onclick="requestFromFavorite('${item.videoId}')" class="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 font-bold rounded-lg border border-amber-500/30 text-[11px] transition">
-              ➕ Pedir
-            </button>
-            <button onclick="removeFavorite(${index})" class="px-2 py-1 text-slate-500 hover:text-red-400 text-[11px] transition">
-              ✕
-            </button>
-          </div>
-        `;
-        container.appendChild(row);
-      });
-    }
-
-    function sendReaction(type) {
-      const field = type === 'star' ? 'stars' : 'tomatoes';
-      roomRef.child(`currentSong/${field}`).transaction(curr => (curr || 0) + 1);
-      
-      roomRef.child('reactionsQueue').push({
-        type: type,
-        time: Date.now()
-      });
-    }
-
-    function skipCurrentSong() {
-      if (confirm("¿Saltar la canción actual en el proyector?")) {
-        roomRef.child('commands').push({
-          action: 'skip',
-          time: Date.now()
-        });
-      }
-    }
-
-    function listenToRoomForMobile() {
-      roomRef.on('value', snapshot => {
-        const data = snapshot.val() || {};
-        const container = document.getElementById('queue-list');
-        container.innerHTML = '';
-
-        if (data.currentSong) {
-          const currentEl = document.createElement('div');
-          currentEl.className = "flex items-center justify-between p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-xs";
-          currentEl.innerHTML = `
-            <div>
-              <p class="font-bold text-emerald-400">${data.currentSong.singer}</p>
-            </div>
-            <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md font-semibold text-[10px] border border-emerald-500/30">
-              🟢 Cantando
-            </span>
-          `;
-          container.appendChild(currentEl);
-        }
-
-        if (data.queue) {
-          const queueArray = Object.entries(data.queue).map(([key, val]) => ({ key, ...val }));
-          queueArray.forEach((item, index) => {
-            const isNext = index === 0;
-            const el = document.createElement('div');
-
-            if (isNext) {
-              el.className = "flex items-center justify-between p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-xs";
-              el.innerHTML = `
-                <div>
-                  <p class="font-bold text-amber-300">${item.singer}</p>
-                </div>
-                <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded-md font-semibold text-[10px] border border-amber-500/30">
-                  🟡 Siguiente
-                </span>
-              `;
-            } else {
-              el.className = "flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs";
-              el.innerHTML = `
-                <div>
-                  <p class="font-semibold text-slate-300">${index + 1}. ${item.singer}</p>
-                </div>
-                <span class="px-2 py-0.5 bg-red-500/10 text-red-400 rounded-md font-medium text-[10px] border border-red-500/20">
-                  🔴 En espera
-                </span>
-              `;
-            }
-            container.appendChild(el);
-          });
-        }
-      });
-    }
-
-    function listenToRoomForScreen() {
-      roomRef.child('reactionsQueue').limitToLast(1).on('child_added', snap => {
-        const val = snap.val();
-        if (val && !isTransitioning) {
-          spawnFloatingReaction(val.type);
-        }
-      });
-
-      roomRef.child('commands').limitToLast(1).on('child_added', snap => {
-        const val = snap.val();
-        if (val && val.action === 'skip' && !isTransitioning) {
-          startFiveSecondTransition();
-        }
-      });
-
-      roomRef.on('value', snapshot => {
-        if (isTransitioning) return;
-        const data = snapshot.val() || {};
-
-        if (data.currentSong) {
-          document.getElementById('hud-singer').innerText = data.currentSong.singer;
-
-          if (playerReady && ytPlayer && data.currentSong.videoId) {
-            if (currentLoadedVideoId !== data.currentSong.videoId) {
-              currentLoadedVideoId = data.currentSong.videoId;
-              ytPlayer.loadVideoById(data.currentSong.videoId);
-            }
-          }
-        } else {
-          document.getElementById('hud-singer').innerText = "Esperando canciones...";
-        }
-
-        if (data.queue) {
-          const firstInQueue = Object.values(data.queue)[0];
-          document.getElementById('hud-next').innerText = firstInQueue ? firstInQueue.singer : "Nadie";
-        } else {
-          document.getElementById('hud-next').innerText = "Nadie";
-        }
-      });
-    }
-
-    function spawnFloatingReaction(type) {
-      const container = document.getElementById('reactions-container');
-      const bubble = document.createElement('div');
-      bubble.className = 'reaction-bubble text-4xl';
-      bubble.innerText = type === 'star' ? '⭐' : '🍅';
-
-      const onLeft = Math.random() > 0.5;
-      const randomX = onLeft ? (8 + Math.random() * 22) : (70 + Math.random() * 22);
-      bubble.style.left = `${randomX}%`;
-
-      container.appendChild(bubble);
-
-      setTimeout(() => {
-        bubble.remove();
-      }, 3300);
-    }
-
-    function onYouTubeIframeAPIReady() {
-      ytPlayer = new YT.Player('yt-player', {
-        height: '100%',
-        width: '100%',
-        playerVars: { 
-          autoplay: 1, 
-          controls: 0, 
-          rel: 0, 
-          modestbranding: 1,
-          iv_load_policy: 3
-        },
-        events: {
-          'onReady': () => { 
-            playerReady = true; 
-            if (roomRef) {
-              roomRef.child('currentSong').once('value', s => {
-                const song = s.val();
-                if (song && song.videoId) {
-                  currentLoadedVideoId = song.videoId;
-                  ytPlayer.loadVideoById(song.videoId);
-                }
-              });
-            }
-          },
-          'onStateChange': (event) => { 
-            if (event.data === 0) {
-              startFiveSecondTransition(); 
-            }
-          }
-        }
-      });
-    }
-
-    function startFiveSecondTransition() {
-      if (isTransitioning) return;
-      isTransitioning = true;
-      
-      const transScreen = document.getElementById('transition-screen');
-      const timerEl = document.getElementById('countdown-timer');
-
-      roomRef.once('value', snapshot => {
-        const data = snapshot.val() || {};
-        const current = data.currentSong || { singer: "Cantante", stars: 0, tomatoes: 0 };
-        const queueEntries = data.queue ? Object.entries(data.queue) : [];
-        const next = queueEntries.length > 0 ? queueEntries[0][1] : null;
-        const nextKey = queueEntries.length > 0 ? queueEntries[0][0] : null;
-
-        document.getElementById('trans-last-singer').innerText = `¡Gran show, ${current.singer}!`;
-        document.getElementById('trans-stars').innerText = current.stars || 0;
-        document.getElementById('trans-tomatoes').innerText = current.tomatoes || 0;
-        document.getElementById('trans-next-singer').innerText = next ? next.singer : "¡Nadie en fila!";
-
-        transScreen.classList.remove('hidden');
-        let seconds = 5;
-        timerEl.innerText = seconds;
-
-        const interval = setInterval(() => {
-          seconds--;
-          timerEl.innerText = seconds;
-
-          if (seconds <= 0) {
-            clearInterval(interval);
-            transScreen.classList.add('hidden');
-
-            if (next && nextKey) {
-              roomRef.child(`queue/${nextKey}`).remove();
-              
-              roomRef.child('currentSong').set({
-                singer: next.singer,
-                videoId: next.videoId,
-                stars: 0,
-                tomatoes: 0
-              });
-
-              currentLoadedVideoId = next.videoId;
-              if (ytPlayer && ytPlayer.loadVideoById) {
-                ytPlayer.loadVideoById(next.videoId);
-              }
-            } else {
-              currentLoadedVideoId = null;
-              roomRef.child('currentSong').remove();
-              if (ytPlayer && ytPlayer.stopVideo) {
-                ytPlayer.stopVideo();
-              }
-            }
-
-            isTransitioning = false;
-          }
-        }, 1000);
-      });
-    }
-
-    let guestQrInstance = null;
-    function openGuestQrModal() {
-      const modal = document.getElementById('guest-qr-modal');
-      const qrContainer = document.getElementById('guest-qrcode');
-      const guestUrl = `${getCleanBaseUrl()}?room=${roomId}&role=guest`;
-
-      document.getElementById('guest-room-text').innerText = `SALA: ${roomId}`;
-
-      if (!guestQrInstance) {
-        qrContainer.innerHTML = '';
-        guestQrInstance = new QRCode(qrContainer, {
-          text: guestUrl,
-          width: 170,
-          height: 170,
-          colorDark: "#020617",
-          colorLight: "#ffffff",
-          correctLevel: QRCode.CorrectLevel.M
-        });
-      }
-      modal.classList.remove('hidden');
-    }
-
-    function closeGuestQrModal() {
-      document.getElementById('guest-qr-modal').classList.add('hidden');
-    }
-  </script>
-</body>
-</html>
-```[cite: 1]
+      document.getElementById('view-create-room').
