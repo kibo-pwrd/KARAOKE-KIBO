@@ -17,8 +17,8 @@
     
     @keyframes floatUp {
       0% { opacity: 0; transform: translateY(0) scale(0.6); }
-      20% { opacity: 0.85; transform: translateY(-40px) scale(1.1); }
-      80% { opacity: 0.6; }
+      20% { opacity: 0.9; transform: translateY(-40px) scale(1.15); }
+      80% { opacity: 0.7; }
       100% { opacity: 0; transform: translateY(-280px) scale(0.9); }
     }
     .reaction-bubble {
@@ -92,6 +92,7 @@
       <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 shadow-lg text-right">
         <p class="text-[10px] uppercase tracking-widest text-amber-400 font-bold leading-none">Siguiente</p>
         <p id="hud-next" class="text-sm font-extrabold text-slate-200 leading-tight">--</p>
+        <p id="hud-room-code" class="text-[9px] font-mono text-slate-400 mt-0.5">SALA: ----</p>
       </div>
     </div>
 
@@ -135,7 +136,7 @@
     </header>
 
     <main class="p-4 max-w-md mx-auto space-y-4">
-      <!-- PANEL EXCLUSIVO DEL MANDO DJ (BOTÓN SALTAR DESTACADO) -->
+      <!-- PANEL EXCLUSIVO DJ -->
       <div id="dj-controls-box" class="hidden glass p-4 rounded-2xl border-2 border-amber-500/40 bg-amber-500/5 space-y-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1.5">
@@ -175,7 +176,7 @@
       </div>
     </main>
 
-    <!-- BARRA INFERIOR (PULGAR: ⭐ y 🍅) -->
+    <!-- BARRA INFERIOR (⭐ y 🍅) -->
     <div class="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/90 backdrop-blur-md border-t border-white/10 p-3">
       <div class="max-w-md mx-auto grid grid-cols-2 gap-3">
         <button onclick="sendReaction('star')" class="py-3.5 bg-amber-500/20 hover:bg-amber-500/30 active:scale-95 border border-amber-500/40 rounded-2xl flex items-center justify-center gap-2 transition">
@@ -227,14 +228,19 @@
     let isTransitioning = false;
     let currentLoadedVideoId = null;
 
+    // Normalizador de URL base seguro para GitHub Pages (conserva rutas/subcarpetas exactas)
+    function getCleanBaseUrl() {
+      return window.location.href.split('?')[0].split('#')[0];
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       const params = new URLSearchParams(window.location.search);
       const urlRoom = params.get('room');
       const urlRole = params.get('role');
 
       if (urlRoom && urlRole) {
-        roomId = urlRoom.toUpperCase();
-        userRole = urlRole;
+        roomId = urlRoom.trim().toUpperCase();
+        userRole = urlRole.trim().toLowerCase();
         roomRef = db.ref(`rooms/${roomId}`);
 
         document.getElementById('view-create-room').classList.add('hidden');
@@ -254,8 +260,7 @@
       roomId = code;
       roomRef = db.ref(`rooms/${roomId}`);
 
-      const baseUrl = window.location.origin + window.location.pathname;
-      const djUrl = `${baseUrl}?room=${roomId}&role=dj`;
+      const djUrl = `${getCleanBaseUrl()}?room=${roomId}&role=dj`;
 
       document.getElementById('view-create-room').classList.add('hidden');
       document.getElementById('view-dj-setup').classList.remove('hidden');
@@ -273,11 +278,13 @@
     function skipToMainScreen() {
       document.getElementById('view-dj-setup').classList.add('hidden');
       document.getElementById('view-screen').classList.remove('hidden');
+      document.getElementById('hud-room-code').innerText = `SALA: ${roomId}`;
       listenToRoomForScreen();
     }
 
     function startScreenMode() {
       document.getElementById('view-screen').classList.remove('hidden');
+      document.getElementById('hud-room-code').innerText = `SALA: ${roomId}`;
       listenToRoomForScreen();
     }
 
@@ -289,7 +296,6 @@
         document.getElementById('mobile-role-badge').innerText = "🎧 Mando DJ";
         const djBox = document.getElementById('dj-controls-box');
         djBox.classList.remove('hidden');
-        djBox.style.display = 'block';
         roomRef.child('djConnected').set(true);
       } else {
         document.getElementById('mobile-role-badge').innerText = "🎤 Control Invitado";
@@ -332,21 +338,23 @@
       document.getElementById('guest-song').value = '';
     }
 
+    // Envío de reacciones con push (garantiza que cada toque se registre)
     function sendReaction(type) {
       const field = type === 'star' ? 'stars' : 'tomatoes';
       roomRef.child(`currentSong/${field}`).transaction(curr => (curr || 0) + 1);
       
-      roomRef.child('lastReaction').set({
+      roomRef.child('reactionsQueue').push({
         type: type,
-        rand: Math.random()
+        time: Date.now()
       });
     }
 
-    // DISPARADOR DE SALTO DESDE EL CELULAR DEL DJ
     function skipCurrentSong() {
       if (confirm("¿Saltar la canción actual en el proyector?")) {
-        // Enviar la señal remota a Firebase para que la pantalla ejecute la transición
-        roomRef.child('skipSignal').set(Date.now());
+        roomRef.child('commands').push({
+          action: 'skip',
+          time: Date.now()
+        });
       }
     }
 
@@ -404,23 +412,23 @@
     }
 
     function listenToRoomForScreen() {
-      // Escucha de reacciones flotantes
-      roomRef.child('lastReaction').on('value', snap => {
+      // Escuchar nuevas reacciones añadidas a la cola
+      roomRef.child('reactionsQueue').limitToLast(1).on('child_added', snap => {
         const val = snap.val();
         if (val && !isTransitioning) {
           spawnFloatingReaction(val.type);
         }
       });
 
-      // ESCUCHA REMOTA DE LA ORDEN DE SALTO DEL DJ
-      roomRef.child('skipSignal').on('value', snap => {
+      // Escuchar órdenes de comando (como saltar canción)
+      roomRef.child('commands').limitToLast(1).on('child_added', snap => {
         const val = snap.val();
-        if (val && !isTransitioning) {
+        if (val && val.action === 'skip' && !isTransitioning) {
           startFiveSecondTransition();
         }
       });
 
-      // Estado general de sala
+      // Estado de la sala
       roomRef.on('value', snapshot => {
         if (isTransitioning) return;
         const data = snapshot.val() || {};
@@ -560,8 +568,7 @@
     function openGuestQrModal() {
       const modal = document.getElementById('guest-qr-modal');
       const qrContainer = document.getElementById('guest-qrcode');
-      const baseUrl = window.location.origin + window.location.pathname;
-      const guestUrl = `${baseUrl}?room=${roomId}&role=guest`;
+      const guestUrl = `${getCleanBaseUrl()}?room=${roomId}&role=guest`;
 
       document.getElementById('guest-room-text').innerText = `SALA: ${roomId}`;
 
@@ -586,3 +593,5 @@
 </body>
 </html>
 ```[cite: 1]
+
+Una vez guardado en GitHub, haz una recarga forzada (`Cmd + Shift + R` en Mac o `Ctrl + F5` en Windows) en la pantalla y verás que ambas funciones responden al instante.
