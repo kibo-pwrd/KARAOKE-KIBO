@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Karaoke Party System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <!-- Generador QR -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+  <!-- ================= VISTA: SELECTOR DE ROL ================= -->
+  <div id="view-select" class="p-6 max-w-md mx-auto text-center space-y-6 pt-16">
+    <h1 class="text-3xl font-extrabold tracking-tight text-amber-400">🎤 KARAOKE LIVE</h1>
+    <p class="text-slate-400 text-sm">Selecciona cómo deseas usar esta pantalla:</p>
+    <div class="flex flex-col gap-3">
+      <button onclick="setRole('screen')" class="w-full py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition">
+        📺 Pantalla / Proyector
+      </button>
+      <button onclick="setRole('guest')" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl border border-slate-700 transition">
+        📱 Control Invitado
+      </button>
+      <button onclick="setRole('dj')" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold rounded-xl border border-slate-800 text-sm transition">
+        🎧 Control DJ
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= VISTA 1: PROYECTOR / PANTALLA ================= -->
+  <div id="view-screen" class="hidden h-screen w-screen relative overflow-hidden bg-black flex flex-col">
+    <!-- Reproductor YouTube Iframe -->
+    <div id="player-container" class="w-full h-full">
+      <div id="yt-player" class="w-full h-full pointer-events-none"></div>
+    </div>
+
+    <!-- Overlay mientras canta -->
+    <div id="screen-hud" class="absolute bottom-6 left-6 right-6 flex justify-between items-end glass p-4 rounded-2xl border border-white/10 z-10">
+      <div>
+        <div class="flex items-center gap-2 mb-1">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+          <p class="text-xs uppercase tracking-widest text-emerald-400 font-bold">Cantando ahora</p>
+        </div>
+        <p id="hud-singer" class="text-2xl font-black text-white">--</p>
+        <p id="hud-song" class="text-sm text-slate-300">--</p>
+      </div>
+      <div class="text-right">
+        <p class="text-xs uppercase tracking-widest text-amber-400 font-bold">A continuación</p>
+        <p id="hud-next" class="text-lg font-bold text-slate-200">--</p>
+      </div>
+    </div>
+
+    <!-- Pantalla de Transición (5 segundos exactos) -->
+    <div id="transition-screen" class="hidden absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center text-center p-8 z-20">
+      <div class="space-y-4 max-w-xl">
+        <p class="text-amber-400 font-bold uppercase tracking-widest text-sm">Resumen de la ronda</p>
+        <h2 id="trans-last-singer" class="text-3xl font-extrabold text-white">¡Gracias!</h2>
+        
+        <div class="flex justify-center gap-8 py-4">
+          <div class="text-center">
+            <span class="text-4xl">⭐</span>
+            <p id="trans-stars" class="text-3xl font-black text-amber-400 mt-1">0</p>
+          </div>
+          <div class="text-center">
+            <span class="text-4xl">🍅</span>
+            <p id="trans-tomatoes" class="text-3xl font-black text-red-500 mt-1">0</p>
+          </div>
+        </div>
+
+        <div class="pt-6 border-t border-slate-800">
+          <p class="text-slate-400 text-sm">Siguiente al micrófono:</p>
+          <p id="trans-next-singer" class="text-2xl font-bold text-amber-400 mb-4">--</p>
+          <div id="countdown-timer" class="text-6xl font-black text-amber-500 animate-pulse">5</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= VISTA 2: CONTROL INVITADO ================= -->
+  <div id="view-guest" class="hidden p-4 max-w-md mx-auto space-y-6 pb-20">
+    <!-- Header con botón sólo QR -->
+    <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+      <div>
+        <h2 class="font-bold text-lg text-amber-400">🎤 Control Invitado</h2>
+        <p class="text-xs text-slate-400">Pide canción y califica en vivo</p>
+      </div>
+      <button onclick="openQrModal()" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg border border-slate-700 text-slate-200">
+        <span>📷</span> Código QR
+      </button>
+    </div>
+
+    <!-- Votación Silenciosa (⭐ / 🍅) -->
+    <div class="glass p-5 rounded-2xl border border-white/10 text-center space-y-3">
+      <p class="text-xs text-slate-400 uppercase font-semibold">Votación en vivo (anónima)</p>
+      <div class="grid grid-cols-2 gap-4">
+        <button onclick="vote('star')" class="py-5 bg-amber-500/20 active:scale-95 border border-amber-500/40 rounded-2xl flex flex-col items-center justify-center gap-1 transition">
+          <span class="text-3xl">⭐</span>
+          <span class="text-xs font-bold text-amber-400">¡Brutal!</span>
+        </button>
+        <button onclick="vote('tomato')" class="py-5 bg-red-500/20 active:scale-95 border border-red-500/40 rounded-2xl flex flex-col items-center justify-center gap-1 transition">
+          <span class="text-3xl">🍅</span>
+          <span class="text-xs font-bold text-red-400">Tomatazo</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Formulario para sumarse a la fila -->
+    <div class="glass p-4 rounded-2xl border border-white/10 space-y-3">
+      <h3 class="text-sm font-bold text-slate-200">Sumar canción a la cola</h3>
+      <input id="guest-name" type="text" placeholder="Tu nombre o apodo" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-amber-400">
+      <input id="guest-song" type="text" placeholder="Título o Link de YouTube" class="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-amber-400">
+      <button onclick="addSong()" class="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm rounded-lg transition">
+        Anotarme a la lista
+      </button>
+    </div>
+
+    <!-- Lista de Canciones con código de colores -->
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Estado de la fila</h3>
+        <span class="text-[10px] text-slate-500 font-mono">🟢 En vivo · 🟡 Próximo · 🔴 En espera</span>
+      </div>
+      <div id="queue-list" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+        <!-- Renderizado dinámico -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL QR ÚNICAMENTE ================= -->
+  <div id="qr-modal" class="hidden fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50">
+    <div class="glass p-6 rounded-2xl max-w-xs w-full text-center space-y-4 border border-white/20">
+      <h3 class="font-bold text-white text-base">Escanea para unirte</h3>
+      <p class="text-xs text-slate-400">Abre la cámara de tu celular y escanea el código</p>
+      
+      <div id="qrcode" class="flex justify-center bg-white p-4 rounded-xl mx-auto w-fit"></div>
+      
+      <button onclick="closeQrModal()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-slate-700">
+        Cerrar
+      </button>
+    </div>
+  </div>
+
+  <!-- ================= LÓGICA JAVASCRIPT ================= -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDKmfnK5cx85FlX8oFgE6zjBqOxLuBKqqY",
+      databaseURL: "https://karaoke---kibo-default-rtdb.firebaseio.com",
+      projectId: "karaoke---kibo"
+    };
+
+    let db;
+    try {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.database();
+    } catch (e) {
+      console.warn("Modo demo local.");
+    }
+
+    const ROOM_ID = "demo_karaoke";
+    let roomRef = db ? db.ref(`rooms/${ROOM_ID}`) : null;
+
+    // Estado local de prueba
+    let state = {
+      currentSong: { singer: "Carlos", title: "La Incondicional", stars: 8, tomatoes: 1 },
+      queue: [
+        { singer: "Andrea", title: "Como la Flor" },
+        { singer: "Marcos", title: "Persiana Americana" },
+        { singer: "Elena", title: "De Música Ligera" }
+      ]
+    };
+
+    function setRole(role) {
+      document.getElementById('view-select').classList.add('hidden');
+      if (role === 'screen') {
+        document.getElementById('view-screen').classList.remove('hidden');
+        initScreen();
+      } else {
+        document.getElementById('view-guest').classList.remove('hidden');
+        renderFullQueue();
+      }
+    }
+
+    function vote(type) {
+      if (roomRef) {
+        roomRef.child(`currentSong/${type === 'star' ? 'stars' : 'tomatoes'}`)
+          .transaction(curr => (curr || 0) + 1);
+      } else {
+        if (type === 'star') state.currentSong.stars++;
+        else state.currentSong.tomatoes++;
+      }
+    }
+
+    function addSong() {
+      const singer = document.getElementById('guest-name').value.trim();
+      const song = document.getElementById('guest-song').value.trim();
+      if (!singer || !song) return alert("Completa tu nombre y la canción.");
+
+      const item = { singer, title: song };
+
+      if (roomRef) {
+        roomRef.child('queue').push(item);
+      } else {
+        state.queue.push(item);
+        renderFullQueue();
+      }
+
+      document.getElementById('guest-song').value = '';
+    }
+
+    // Renderiza la lista completa con etiquetas de color
+    function renderFullQueue() {
+      const container = document.getElementById('queue-list');
+      container.innerHTML = '';
+
+      // 1. Canción que se está cantando actualmente (VERDE)
+      if (state.currentSong) {
+        const currentEl = document.createElement('div');
+        currentEl.className = "flex items-center justify-between p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-xs";
+        currentEl.innerHTML = `
+          <div>
+            <p class="font-bold text-emerald-400">${state.currentSong.singer}</p>
+            <p class="text-slate-300 text-[11px]">${state.currentSong.title}</p>
+          </div>
+          <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md font-semibold text-[10px] border border-emerald-500/30">
+            🟢 Cantando
+          </span>
+        `;
+        container.appendChild(currentEl);
+      }
+
+      // 2. Cola: El primero es AMARILLO, el resto es ROJO
+      state.queue.forEach((item, index) => {
+        const isNext = index === 0;
+        const el = document.createElement('div');
+
+        if (isNext) {
+          // Amarillo: Próximo
+          el.className = "flex items-center justify-between p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-xs";
+          el.innerHTML = `
+            <div>
+              <p class="font-bold text-amber-300">${item.singer}</p>
+              <p class="text-slate-400 text-[11px]">${item.title}</p>
+            </div>
+            <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded-md font-semibold text-[10px] border border-amber-500/30">
+              🟡 Siguiente
+            </span>
+          `;
+        } else {
+          // Rojo / En espera
+          el.className = "flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs";
+          el.innerHTML = `
+            <div>
+              <p class="font-semibold text-slate-300">${index + 1}. ${item.singer}</p>
+              <p class="text-slate-500 text-[11px]">${item.title}</p>
+            </div>
+            <span class="px-2 py-0.5 bg-red-500/10 text-red-400 rounded-md font-medium text-[10px] border border-red-500/20">
+              🔴 En espera
+            </span>
+          `;
+        }
+        container.appendChild(el);
+      });
+    }
+
+    // Modal exclusivo para QR
+    let qrGenerated = false;
+    function openQrModal() {
+      const modal = document.getElementById('qr-modal');
+      const qrContainer = document.getElementById('qrcode');
+      
+      if (!qrGenerated) {
+        qrContainer.innerHTML = '';
+        new QRCode(qrContainer, {
+          text: window.location.href,
+          width: 160,
+          height: 160,
+          colorDark: "#020617",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+        qrGenerated = true;
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeQrModal() {
+      document.getElementById('qr-modal').classList.add('hidden');
+    }
+
+    function initScreen() {
+      document.getElementById('hud-singer').innerText = state.currentSong.singer;
+      document.getElementById('hud-song').innerText = state.currentSong.title;
+      document.getElementById('hud-next').innerText = state.queue[0] ? state.queue[0].singer : "Nadie en fila";
+    }
+  </script>
+</body>
+</html>
